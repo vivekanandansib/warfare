@@ -29,7 +29,7 @@ const sandbox = {
     querySelector: () => null,
     querySelectorAll: () => [],
     addEventListener: noop,
-    body: { appendChild: noop }
+    body: { appendChild: noop, dataset: {} },
   },
   window: { innerWidth: 1200, innerHeight: 800, addEventListener: noop, setTimeout: noop },
   localStorage: { getItem: () => null, setItem: noop, removeItem: noop },

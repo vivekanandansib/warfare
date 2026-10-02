@@ -131,6 +131,23 @@ class Combat3D {
     inner.position.y = 0.03;
     this.arenaGroup.add(inner);
 
+    // Inlaid stonework turns the fighting floor into a built arena surface.
+    const grout = new THREE.MeshStandardMaterial({ color: 0x493d2d, roughness: 0.92 });
+    const inlay = new THREE.MeshStandardMaterial({ color: 0xc3a66a, metalness: 0.22, roughness: 0.62 });
+    for (let r = 2.5; r <= 9; r += 2.15) {
+      const seam = new THREE.Mesh(new THREE.TorusGeometry(r, 0.035, 5, 96), grout);
+      seam.rotation.x = -Math.PI / 2; seam.position.y = 0.045; this.arenaGroup.add(seam);
+    }
+    for (let i = 0; i < 24; i++) {
+      const a = i * Math.PI / 12;
+      const length = 9.4;
+      const tileLine = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.018, length), i % 3 === 0 ? inlay : grout);
+      tileLine.position.set(Math.sin(a) * length * 0.5, 0.047, Math.cos(a) * length * 0.5);
+      tileLine.rotation.y = a; this.arenaGroup.add(tileLine);
+    }
+    const centerMark = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.07, 8, 48), inlay);
+    centerMark.rotation.x = -Math.PI / 2; centerMark.position.y = 0.06; this.arenaGroup.add(centerMark);
+
     // tiered stands
     const tiers = [
       { r0: 13, r1: 16, h: 2.2, y: 1.0 },
@@ -263,7 +280,7 @@ class Combat3D {
     return new THREE.MeshStandardMaterial({ color, metalness: metal || 0.4, roughness: rough || 0.5 });
   }
 
-  buildCharacter(unit, isPlayer) {
+  buildCharacterLegacy(unit, isPlayer) {
     const g = new THREE.Group();
     const cfg = this.getConfig(unit.kingdom || 'neutral');
     const sc = 0.8 + (unit.stats.hp / 150) * 0.4;
@@ -343,6 +360,23 @@ class Combat3D {
         add(new THREE.CylinderGeometry(0.07, 0.06, 0.45, 6), bm, [-0.12, 0.35, 0]);
         add(new THREE.CylinderGeometry(0.07, 0.06, 0.45, 6), bm, [0.12, 0.35, 0]);
     }
+    this.addWeapon(g, cfg, wm);
+    g.scale.set(sc, sc, sc);
+    const charData = { group: g, unit, isPlayer, config: cfg, originalY: 0, animState: 'idle', animTime: 0, hpPercent: 1 };
+    this.characters.push(charData);
+    this.scene.add(g);
+    return charData;
+  }
+
+  buildCharacter(unit, isPlayer) {
+    const cfg = this.getConfig(unit.kingdom || 'neutral');
+    const sc = 0.8 + (unit.stats.hp / 150) * 0.4;
+    const wm = this.mat(cfg.wc, 0.8, 0.2);
+    const bodyType = cfg.bt;
+    const g = window.FantasyHumanoid3D.create({ robe: cfg.bc, accent: cfg.ac, metal: cfg.wc,
+      height: bodyType === 'tower' || bodyType === 'heavy' ? 1.8 : 1.68,
+      crown: bodyType === 'tower' || bodyType === 'heavy' ? 'helmet' : (bodyType === 'robed' ? 'hood' : false),
+      hood: bodyType === 'robed', beard: bodyType === 'heavy', cape: bodyType !== 'chaotic' });
     this.addWeapon(g, cfg, wm);
     g.scale.set(sc, sc, sc);
     const charData = { group: g, unit, isPlayer, config: cfg, originalY: 0, animState: 'idle', animTime: 0, hpPercent: 1 };

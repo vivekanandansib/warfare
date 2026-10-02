@@ -750,7 +750,7 @@ class StoryCinematic3D {
     });
   }
 
-  buildKingFigure(k) {
+  buildKingFigureLegacy(k) {
     const g = new THREE.Group();
     const c = this.hex2rgb(k.color);
     const dark = new THREE.Color(c).multiplyScalar(0.5);
@@ -812,7 +812,7 @@ class StoryCinematic3D {
   /* ---- A reusable low-poly humanoid avatar ----
      opts: { color, robe, skin, crown:true|'helmet'|false, weapon:'sword'|'mace'|false,
              height }  returns a THREE.Group with armPivots + legs for acting. */
-  buildCharacter(opts) {
+  buildCharacterLegacy(opts) {
     const o = opts || {};
     const g = new THREE.Group();
     const robe = new THREE.Color(o.robe || '#6b6b8a');
@@ -856,6 +856,29 @@ class StoryCinematic3D {
     }
     g.userData.armL = armL; g.userData.armR = armR; g.userData.legL = legL; g.userData.legR = legR;
     return g;
+  }
+
+  buildKingFigure(k) {
+    const color = this.hex2rgb(k.color);
+    const group = window.FantasyHumanoid3D.create({ robe: color, accent: color, height: 4.35,
+      skin: 0xc49a78, metal: 0xd4a847, crown: true, beard: true, cape: true });
+    const armPivot = group.userData.armR;
+    armPivot.position.set(0.92, 3.25, 0);
+    armPivot.rotation.z = -0.12;
+    const bladePivot = new THREE.Group(); bladePivot.position.set(0, -0.48, 0.05); armPivot.add(bladePivot);
+    const gold = new THREE.MeshStandardMaterial({ color: 0xd4a847, metalness: 0.9, roughness: 0.2 });
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.8, 0.16), new THREE.MeshStandardMaterial({ color: 0xdfeaff, metalness: 0.9, roughness: 0.12, emissive: 0x7198c9, emissiveIntensity: 0.18 }));
+    blade.position.y = 1.05; bladePivot.add(blade);
+    const cross = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.09, 0.1), gold); cross.position.y = 0.18; bladePivot.add(cross);
+    group.userData.king = k; group.userData.armPivot = armPivot; group.userData.bladePivot = bladePivot;
+    return group;
+  }
+
+  buildCharacter(opts) {
+    const o = opts || {};
+    return window.FantasyHumanoid3D.create({ robe: o.robe, skin: o.skin, height: o.height || 1.6,
+      crown: o.crown, metal: o.metal, accent: o.accent, hood: o.hood,
+      beard: o.beard, cape: o.cape !== false });
   }
 
   /* Dresses the dais as a royal throne-hall interior: arches, banners,

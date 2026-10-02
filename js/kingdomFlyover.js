@@ -128,24 +128,10 @@
   /* A reusable low-poly villager avatar (head, body/robe, arms). */
   F.prototype.buildVillager = function (robe, skin, opts) {
     const o = opts || {};
-    const g = new THREE.Group();
-    const m = (c, mm, r) => new THREE.MeshStandardMaterial({ color: c, metalness: mm == null ? 0.2 : mm, roughness: r == null ? 0.7 : r });
-    const H = o.h || 1.45;
-    const add = (geo, mat, x, y, z) => { const mesh = new THREE.Mesh(geo, mat); mesh.position.set(x, y, z); mesh.castShadow = true; g.add(mesh); return mesh; };
-    // robe/body
-    add(new THREE.CylinderGeometry(0.17, 0.34, H * 0.55, 8), m(robe, 0.2, 0.8), 0, H * 0.55, 0);
-    // head
-    add(new THREE.SphereGeometry(0.15, 12, 12), m(skin, 0.1, 0.6), 0, H * 0.9, 0);
-    // hood or hair
-    if (o.hood) add(new THREE.ConeGeometry(0.17, 0.3, 8), m(robe, 0.2, 0.8), 0, H * 1.02, 0);
-    else add(new THREE.SphereGeometry(0.06, 8, 8), m(o.hair || 0x3a2a1a, 0, 0.8), 0, H * 0.99, 0.13);
-    // arms
-    const armL = new THREE.Group(); armL.position.set(-0.24, H * 0.74, 0); g.add(armL);
-    const armR = new THREE.Group(); armR.position.set(0.24, H * 0.74, 0); g.add(armR);
-    armL.add(add(new THREE.CylinderGeometry(0.05, 0.06, H * 0.3, 6), m(robe, 0.3, 0.7), 0, -H * 0.14, 0));
-    armR.add(add(new THREE.CylinderGeometry(0.05, 0.06, H * 0.3, 6), m(robe, 0.3, 0.7), 0, -H * 0.14, 0));
-g.userData.armL = armL; g.userData.armR = armR;
-    return g;
+    const color = robe && robe.isColor ? robe.getHex() : robe;
+    return window.FantasyHumanoid3D.create({ robe: color || 0x59627a, skin: skin || 0xd5aa83,
+      height: o.h || 1.45, hood: !!o.hood, hair: o.hair || 0x30252b,
+      cape: !!o.hood, accent: o.accent || 0xb99a67 });
   };
 
   /* Low-poly horse for the mounted guard (~2u tall). */
@@ -336,6 +322,14 @@ g.userData.armL = armL; g.userData.armR = armR;
       wall.position.set(x, varH / 2, z);
       wall.rotation.y = a;
       scene.add(wall);
+      const plinth = new THREE.Mesh(new THREE.BoxGeometry(wallW + 0.38, 0.28, wallD + 0.38), new THREE.MeshStandardMaterial({ color: this.hex2rgb(th.groundRock), roughness: 0.92 }));
+      plinth.position.set(x, 0.14, z); plinth.rotation.y = a; plinth.receiveShadow = true; scene.add(plinth);
+      const timber = new THREE.MeshStandardMaterial({ color: 0x38291f, roughness: 0.88 });
+      for (const edge of [-1, 1]) {
+        const beam = new THREE.Mesh(new THREE.BoxGeometry(0.16, varH, wallD + 0.08), timber);
+        beam.position.set(x + Math.cos(a) * edge * wallW * 0.43, varH / 2, z - Math.sin(a) * edge * wallW * 0.43);
+        beam.rotation.y = a; beam.castShadow = true; scene.add(beam);
+      }
       if (style === 'keep') {
         for (let cI = 0; cI < 3; cI++) {
           const cren = new THREE.Mesh(new THREE.BoxGeometry(wallW * 0.24, 0.4, wallW * 0.24), new THREE.MeshStandardMaterial({ color: 0x2e3542, roughness: 0.9 }));
@@ -356,9 +350,22 @@ g.userData.armL = armL; g.userData.armR = armR;
       }
       scene.add(roof);
       // glowing windows face the plaza
-      const win = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.8), winMat);
-      win.position.set(x, varH * 0.66, z); win.lookAt(0, varH * 0.66, 0);
-      scene.add(win);
+      const face = new THREE.Group();
+      face.position.set(x - Math.cos(a) * (wallD / 2 + 0.045), 0, z - Math.sin(a) * (wallD / 2 + 0.045));
+      face.lookAt(0, 0, 0); scene.add(face);
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(0.82, 0.72), winMat);
+      win.position.set(0, varH * 0.7, 0.015); face.add(win);
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0x4a3027, roughness: 0.75 });
+      for (const sx of [-1, 1]) {
+        const jamb = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0, 0.16), frameMat);
+        jamb.position.set(sx * 0.48, varH * 0.7, 0.045); face.add(jamb);
+      }
+      const lintel = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.12, 0.17), frameMat);
+      lintel.position.set(0, varH * 0.7 + 0.45, 0.045); face.add(lintel);
+      const door = new THREE.Mesh(new THREE.BoxGeometry(0.82, 1.35, 0.12), new THREE.MeshStandardMaterial({ color: 0x493026, roughness: 0.8 }));
+      door.position.set(0, 0.78, 0.04); face.add(door);
+      const handle = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), new THREE.MeshStandardMaterial({ color: 0xd4a847, metalness: 0.8, roughness: 0.25 }));
+      handle.position.set(0.24, 0.78, 0.12); face.add(handle);
       if (th.stringlights) {
         for (let s = 0; s < 3; s++) {
           const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), new THREE.MeshStandardMaterial({ color: 0xffe08a, emissive: this.hex2rgb(th.win), emissiveIntensity: 1.8 }));

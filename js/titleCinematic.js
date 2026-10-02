@@ -193,7 +193,7 @@ class TitleCinematic {
     });
   }
 
-  buildKingFigure(k) {
+  buildKingFigureLegacy(k) {
     const g = new THREE.Group();
     const c = this.hex2rgb(k.color);
     const dark = new THREE.Color(c).multiplyScalar(0.5);
@@ -247,6 +247,22 @@ class TitleCinematic {
 
     g.userData.king = k;
     return g;
+  }
+
+  buildKingFigure(k) {
+    const c = this.hex2rgb(k.color);
+    const king = window.FantasyHumanoid3D.create({ robe: c, accent: c, skin: 0xc79f80,
+      height: 2.55, crown: k.id === 'vigilant' ? 'helmet' : true,
+      metal: 0xd4a847, beard: k.id === 'valor' || k.id === 'clement', cape: true });
+    const staff = new THREE.Group();
+    staff.position.set(0.28, 0.48, 0.12); king.userData.armR.add(staff);
+    const gold = new THREE.MeshStandardMaterial({ color: 0xd4a847, metalness: 0.9, roughness: 0.2 });
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.35, 8), gold);
+    shaft.position.set(0, -0.42, 0); staff.add(shaft);
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.16, 1), new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.7, metalness: 0.5, roughness: 0.2 }));
+    gem.position.set(0, 0.28, 0); staff.add(gem);
+    king.userData.king = k;
+    return king;
   }
 
   buildParticles() {
