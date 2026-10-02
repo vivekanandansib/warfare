@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WARFARE, The Battle of Virtues</title>
+  <link rel="stylesheet" href="css/style.css?v=22">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚔️</text></svg>">
+</head>
+<body>
+  <canvas id="particle-canvas"></canvas>
+  <div id="game-container">
+    <div id="role-xp-toast" class="role-xp-toast"></div>
+    <div id="notify-toast" class="notify-toast"></div>
+    <div id="save-manager" class="save-manager" style="display:none"></div>
+
+    <!-- TITLE SCREEN -->
+    <div class="screen active" id="screen-title" style="padding:0;max-width:100%">
+      <div id="title-scene-canvas" style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:9;background:#000"></div>
+      <div id="title-cinematic-container" style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:10;background:#000"></div>
+      <div id="king-titlecard" class="king-titlecard">
+        <div class="king-titlecard-inner" id="king-titlecard-inner">
+          <div class="king-titlecard-emblem" id="king-titlecard-emblem"></div>
+          <div class="king-titlecard-line"></div>
+          <div>
+            <div class="king-titlecard-name" id="king-titlecard-name"></div>
+            <div class="king-titlecard-motto" id="king-titlecard-motto"></div>
+          </div>
+        </div>
+      </div>
+      <div class="release-hint" id="release-hint">SCROLL THROUGH THE AGES</div>
+      <div class="title-screen" style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:11;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
+        <h1 class="title-main">WARFARE</h1>
+        <div class="title-sub">THE BATTLE OF VIRTUES</div>
+        <p class="title-lore">
+          Eight kingdoms. One virtue each. One throne to rule them all.<br>
+          But in the shadows, Deception waits for the victor to fall...
+        </p>
+        <div style="pointer-events:auto;display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
+          <button class="btn btn-primary" id="btn-start">Begin Your Journey</button>
+          <button class="btn btn-small" id="btn-load">Continue Saved Game</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STORY SCREEN -->
+    <div class="screen" id="screen-story" style="padding:0;max-width:100%">
+      <div id="story-scene-canvas" style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:10;background:#000"></div>
+      <div id="story-cinematic-container" style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:10.5;pointer-events:none"></div>
+      <div class="cinema-bar cinema-bar-top"></div>
+      <div class="cinema-bar cinema-bar-bottom"></div>
+      <div id="story-overlay" style="position:fixed;bottom:0;left:0;right:0;z-index:11;padding:46px 40px 40px;background:linear-gradient(transparent, rgba(0,0,0,0.35) 18%, rgba(0,0,0,0.92) 55%, rgba(0,0,0,0.99) 100%);">
+        <div id="story-content" style="max-width:820px;margin:0 auto;text-align:center"></div>
+      </div>
+    </div>
+
+    <!-- KINGDOM SELECT SCREEN -->
+    <div class="screen" id="screen-kingdom-select" style="padding:0;max-width:100%">
+      <div id="kingdom-select-bg" style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:0;background:#0a0a12"></div>
+      <div style="position:relative;z-index:1;width:100%;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:30px 20px">
+        <div class="kingdom-select-header">
+          <div class="kingdom-select-subtitle">Choose Your Allegiance</div>
+          <h2 class="kingdom-select-title">CHOOSE YOUR KINGDOM</h2>
+          <div class="kingdom-select-desc">Each realm commands a different virtue. The throne awaits the strongest.</div>
+        </div>
+        <div class="kingdom-game-grid" id="kingdom-grid"></div>
+        <div id="kingdom-detail-overlay" class="kingdom-detail-overlay"></div>
+      </div>
+    </div>
+
+    <!-- KINGDOM FLYOVER SCREEN -->
+    <div class="screen" id="screen-kingdom-flyover" style="padding:0;max-width:100%">
+      <div id="kingdom-flyover-container" style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:10.5;pointer-events:none"></div>
+      <div class="kflyover-overlay" id="kflyover-overlay">
+        <div class="kflyover-inner" id="kflyover-inner">
+          <div class="kflyover-emblem" id="kflyover-emblem"></div>
+          <div class="kflyover-name" id="kflyover-name"></div>
+          <div class="kflyover-motto" id="kflyover-motto"></div>
+          <div class="kflyover-line"></div>
+          <div class="kflyover-lore">
+            <div class="kflyover-lore-title" id="kflyover-lore-title"></div>
+            <div class="kflyover-lore-text" id="kflyover-lore-text"></div>
+          </div>
+        </div>
+        <button class="btn btn-primary kflyover-continue" id="kflyover-continue">Enter the Realm &rarr;</button>
+      </div>
+    </div>
+
+    <!-- CLASS SELECT SCREEN -->
+    <div class="screen" id="screen-class-select" style="padding:0;max-width:100%">
+      <div id="class-select-bg" style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:0;background:#0a0a12"></div>
+      <div style="position:relative;z-index:1;width:100%;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:30px 20px">
+        <div id="class-select-content"></div>
+      </div>
+    </div>
+
+    <!-- HUB SCREEN -->
+    <div class="screen" id="screen-hub">
+      <div class="hub-screen" id="hub-content"></div>
+    </div>
+
+    <!-- COMBAT SCREEN -->
+    <div class="screen" id="screen-combat">
+      <div class="combat-stage" id="combat-stage">
+        <div id="combat-3d-container"></div>
+        <div class="battle-art-wash" aria-hidden="true"></div>
+        <div class="field-plates" id="field-plates"></div>
+        <div class="turn-call" id="turn-call"></div>
+      </div>
+      <div class="combat-screen" id="combat-content"></div>
+    </div>
+
+  </div>
+
+  <script src="js/data.js?v=17"></script>
+  <script src="js/ui.js?v=4"></script>
+  <script src="js/combat.js?v=11"></script>
+  <script src="js/combat3d.js?v=6"></script>
+  <script src="js/storyScenes.js?v=4"></script>
+  <script src="js/titleCinematic.js?v=4"></script>
+  <script src="js/kingdomFlyover.js?v=6"></script>
+  <script src="js/storyCinematic3D.js?v=6"></script>
+  <script src="js/game.js?v=27"></script>
+</body>
+</html>

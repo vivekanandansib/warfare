@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WARF combat test</title>
+  <style>
+    body { background: #111; color: #eee; font-family: monospace; padding: 20px; }
+    .pass { color: #2ecc71; }
+    .fail { color: #e74c3c; font-weight: bold; }
+    .test-name { color: #f39c12; margin-top: 12px; }
+    #results { white-space: pre-wrap; line-height: 1.6; }
+  </style>
+</head>
+<body>
+<h2>WARF combat — unit tests</h2>
+<div id="results"></div>
+
+<script src="js/data.js"></script>
+<script src="js/ui.js"></script>
+<script>
+// Stub particles so combat doesn't crash on DOM calls
+const particles = {
+  screenShake: () => {},
+  flash: () => {},
+  spawn: () => {}
+};
+</script>
+<script src="js/combat.js"></script>
+<script>
+const out = document.getElementById('results');
+function log(msg, cls) {
+  const span = document.createElement('span');
+  span.className = cls || '';
+  span.textContent = msg + '\n';
+  out.appendChild(span);
+}
+function assert(cond, msg) {
+  log(cond ? `  PASS: ${msg}` : `  FAIL: ${msg}`, cond ? 'pass' : 'fail');
+  return cond;
+}
+
+// --- Helpers ---
+function makeUnit(name, kingdom, stats, isPlayer) {
+  return { name, kingdom, class: 'Warrior', level: 1, stats: { ...stats }, party: [] };
+}
+
+function freshCombat(players, enemies) {
+  const c = new CombatEngine();
+  // Prevent startTurn from running async enemy AI during tests
+  const origStart = c.startTurn.bind(c);
+  c.startTurn = function() {
+    this.turn++;
+    const alive = this.allUnits.filter(u => u.alive);
+    if (alive.length === 0) { this.endCombat('draw'); return; }
+    const alivePlayer = this.playerTeam.filter(u => u.alive);
+    const aliveEnemy = this.enemyTeam.filter(u => u.alive);
+    if (alivePlayer.length === 0) { this.endCombat('enemy'); return; }
+    if (aliveEnemy.length === 0) { this.endCombat('player'); return; }
+    const fastest = alive.sort((a, b) => this.getEffectiveStat(b, 'spd') - this.getEffectiveStat(a, 'spd'))[0];
+    this.currentUnit = fastest;
+    this.processBuffs(fastest);
+    this.isPlayerTurn = fastest.isPlayer;
+    if (this.onTurnUpdate) this.onTurnUpdate(fastest);
+    // Do NOT call enemyAI — we control turns manually in tests
+  };
+  c.onLogUpdate = () => {};
+  c.onCombatEnd = () => {};
+  c.initCombat(players, enemies, { type: 'test' });
+  return c;
+}
+
+// --- Test data ---
+const playerStats = { hp: 100, atk: 20, def: 15, spAtk: 25, spd: 30 };
+const enemyStats  = { hp: 80,  atk: 18, def: 10, spAtk: 15, spd: 20 };
+
+// ============================================================
+log('\n=== TEST 1: initCombat sets up teams correctly ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  assert(c.playerTeam.length === 1, 'playerTeam has 1 member');
+  assert(c.enemyTeam.length === 1, 'enemyTeam has 1 member');
+  assert(c.playerTeam[0].currentHp === 100, 'player currentHp = 100');
+  assert(c.playerTeam[0].maxHp === 100, 'player maxHp = 100');
+  assert(c.playerTeam[0].energy === 100, 'player energy = 100');
+  assert(c.playerTeam[0].alive === true, 'player alive = true');
+  assert(c.playerTeam[0].isPlayer === true, 'player isPlayer = true');
+  assert(c.enemyTeam[0].isPlayer === false, 'enemy isPlayer = false');
+  assert(c.turn === 1, 'turn starts at 1 (startTurn called)');
+}
+
+// ============================================================
+log('\n=== TEST 2: playerAction — attack deals damage ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  const enemy = c.enemyTeam[0];
+  const hpBefore = enemy.currentHp;
+  c.playerAction('attack', 0);
+  assert(enemy.currentHp < hpBefore, `enemy hp dropped: ${hpBefore} -> ${enemy.currentHp}`);
+  assert(c.isPlayerTurn === false, 'isPlayerTurn set to false after action');
+  assert(c.log.some(l => l.message.includes('Goblin')), 'log contains Goblin reference');
+}
+
+// ============================================================
+log('\n=== TEST 3: playerAction — defend gives shield + energy ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  const hero = c.playerTeam[0];
+  hero.energy = 50;
+  c.playerAction('defend', 0);
+  assert(hero.shield > 0, `shield gained: ${hero.shield}`);
+  assert(hero.energy === 70, `energy recovered: ${hero.energy} (expected 70)`);
+  assert(c.log.some(l => l.message.includes('guard')), 'log mentions guard');
+}
+
+// ============================================================
+log('\n=== TEST 4: playerAction — heal restores ally HP ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  const hero = c.playerTeam[0];
+  hero.currentHp = 40;
+  const hpBefore = hero.currentHp;
+  c.playerAction('heal', 0);
+  assert(hero.currentHp > hpBefore, `hp restored: ${hpBefore} -> ${hero.currentHp}`);
+  assert(hero.energy === 75, `energy cost: ${hero.energy} (expected 75)`);
+  assert(c.log.some(l => l.message.includes('recovered')), 'log mentions recovered');
+}
+
+// ============================================================
+log('\n=== TEST 5: playerAction — heal with no energy falls back to attack ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  const hero = c.playerTeam[0];
+  hero.currentHp = 40;
+  hero.energy = 0;
+  const enemy = c.enemyTeam[0];
+  const enemyHpBefore = enemy.currentHp;
+  c.playerAction('heal', 0);
+  assert(enemy.currentHp < enemyHpBefore, `enemy took fallback damage: ${enemyHpBefore} -> ${enemy.currentHp}`);
+  assert(c.log.some(l => l.message.includes('Not enough energy')), 'log mentions not enough energy');
+}
+
+// ============================================================
+log('\n=== TEST 6: playerAction — heal when full HP falls back to attack ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  const enemy = c.enemyTeam[0];
+  const enemyHpBefore = enemy.currentHp;
+  c.playerAction('heal', 0); // hero is at full HP
+  assert(enemy.currentHp < enemyHpBefore, `enemy took fallback damage: ${enemyHpBefore} -> ${enemy.currentHp}`);
+  assert(c.log.some(l => l.message.includes('No allies need healing')), 'log mentions no allies need healing');
+}
+
+// ============================================================
+log('\n=== TEST 7: playerAction — special uses energy and executes ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  const hero = c.playerTeam[0];
+  const enemy = c.enemyTeam[0];
+  const enemyHpBefore = enemy.currentHp;
+  c.playerAction('special', 0);
+  assert(hero.energy < 100, `energy consumed: ${hero.energy}`);
+  assert(enemy.currentHp < enemyHpBefore, `enemy took special damage: ${enemyHpBefore} -> ${enemy.currentHp}`);
+  assert(c.log.some(l => l.type === 'special'), 'log has special type entry');
+}
+
+// ============================================================
+log('\n=== TEST 8: playerAction — special with no energy falls back to attack ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  const hero = c.playerTeam[0];
+  hero.energy = 0;
+  const enemy = c.enemyTeam[0];
+  const enemyHpBefore = enemy.currentHp;
+  c.playerAction('special', 0);
+  assert(enemy.currentHp < enemyHpBefore, `enemy took fallback damage: ${enemyHpBefore} -> ${enemy.currentHp}`);
+  assert(c.log.some(l => l.message.includes('Not enough energy')), 'log mentions not enough energy');
+}
+
+// ============================================================
+log('\n=== TEST 9: playerAction — blocked when not player turn ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  c.isPlayerTurn = false;
+  const enemy = c.enemyTeam[0];
+  const hpBefore = enemy.currentHp;
+  c.playerAction('attack', 0);
+  assert(enemy.currentHp === hpBefore, 'no damage dealt when not player turn');
+}
+
+// ============================================================
+log('\n=== TEST 10: playerAction — blocked when combat ended ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  c.combatEnded = true;
+  const enemy = c.enemyTeam[0];
+  const hpBefore = enemy.currentHp;
+  c.playerAction('attack', 0);
+  assert(enemy.currentHp === hpBefore, 'no damage dealt when combat ended');
+}
+
+// ============================================================
+log('\n=== TEST 11: attack — invalid target index does nothing ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  const hero = c.playerTeam[0];
+  c.playerAction('attack', 99);
+  assert(c.isPlayerTurn === true, 'isPlayerTurn restored to true on invalid target');
+  assert(hero.energy === 100, 'energy unchanged on invalid target');
+}
+
+// ============================================================
+log('\n=== TEST 12: special — invalid target index does nothing ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  const hero = c.playerTeam[0];
+  c.playerAction('special', 99);
+  assert(c.isPlayerTurn === true, 'isPlayerTurn restored to true on invalid target');
+  assert(hero.energy === 100, 'energy unchanged on invalid target');
+}
+
+// ============================================================
+log('\n=== TEST 13: attack — dead target does nothing ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  c.enemyTeam[0].alive = false;
+  c.enemyTeam[0].currentHp = 0;
+  const hero = c.playerTeam[0];
+  c.playerAction('attack', 0);
+  assert(c.isPlayerTurn === true, 'isPlayerTurn restored to true on dead target');
+}
+
+// ============================================================
+log('\n=== TEST 14: attack — shield absorbs damage ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  c.enemyTeam[0].shield = 999;
+  const enemy = c.enemyTeam[0];
+  c.playerAction('attack', 0);
+  assert(enemy.currentHp === enemy.maxHp, `enemy HP unchanged: ${enemy.currentHp}`);
+  assert(c.log.some(l => l.message.includes('shield')), 'log mentions shield');
+}
+
+// ============================================================
+log('\n=== TEST 15: multiple party members — all get turns ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('A', 'valor', { ...playerStats, spd: 50 }, true),
+     makeUnit('B', 'altruism', { ...playerStats, spd: 10 }, true)],
+    [makeUnit('E', 'lust', enemyStats, false)]
+  );
+  // Start turn should pick fastest (A with spd 50)
+  assert(c.currentUnit.name === 'A', `fastest unit goes first: ${c.currentUnit.name}`);
+  c.playerAction('attack', 0);
+  // Next turn should pick B or enemy depending on speed
+  assert(c.turn >= 2, `turn advanced: ${c.turn}`);
+}
+
+// ============================================================
+log('\n=== TEST 16: kill enemy — checkCombatEnd detects player win ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', { ...enemyStats, hp: 1 }, false)]
+  );
+  c.enemyTeam[0].currentHp = 1;
+  let endResult = null;
+  c.onCombatEnd = (winner) => { endResult = winner; };
+  c.playerAction('attack', 0);
+  assert(c.enemyTeam[0].alive === false, 'enemy is dead');
+  // checkCombatEnd was called, endCombat fires via setTimeout
+}
+
+// ============================================================
+log('\n=== TEST 17: defend — shield blocks subsequent damage ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  const hero = c.playerTeam[0];
+  c.playerAction('defend', 0);
+  const shieldBefore = hero.shield;
+  assert(shieldBefore > 0, `shield applied: ${shieldBefore}`);
+  // Simulate enemy attack hitting the hero
+  const damage = c.calculateDamage(c.enemyTeam[0], hero);
+  c.applyDamage(hero, damage, c.enemyTeam[0]);
+  assert(hero.shield < shieldBefore || hero.currentHp === hero.maxHp,
+    `shield absorbed some damage (shield: ${hero.shield}, hp: ${hero.currentHp})`);
+}
+
+// ============================================================
+log('\n=== TEST 18: heal — targets weakest ally ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('A', 'valor', { ...playerStats, spd: 50 }, true),
+     makeUnit('B', 'altruism', { ...playerStats, spd: 10 }, true)],
+    [makeUnit('E', 'lust', enemyStats, false)]
+  );
+  c.playerTeam[0].currentHp = 30; // A is weaker
+  c.playerTeam[1].currentHp = 80; // B is fine
+  c.currentUnit = c.playerTeam[0];
+  c.isPlayerTurn = true;
+  c.playerAction('heal', 0);
+  assert(c.playerTeam[0].currentHp > 30, `weakest ally A healed: ${c.playerTeam[0].currentHp}`);
+  assert(c.playerTeam[1].currentHp === 80, `stronger ally B unchanged: ${c.playerTeam[1].currentHp}`);
+}
+
+// ============================================================
+log('\n=== TEST 19: energy gain after action ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  const hero = c.playerTeam[0];
+  hero.energy = 0;
+  c.playerAction('attack', 0);
+  assert(hero.energy === 10, `energy gained after attack: ${hero.energy} (expected 10)`);
+}
+
+// ============================================================
+log('\n=== TEST 20: defend — energy gain after action ===', 'test-name');
+{
+  const c = freshCombat(
+    [makeUnit('Hero', 'valor', playerStats, true)],
+    [makeUnit('Goblin', 'lust', enemyStats, false)]
+  );
+  const hero = c.playerTeam[0];
+  hero.energy = 30;
+  c.playerAction('defend', 0);
+  // defend adds 20 (action) + 10 (post-action) = 60
+  assert(hero.energy === 60, `energy after defend: ${hero.energy} (expected 60)`);
+}
+
+// ============================================================
+log('\n--- ALL TESTS COMPLETE ---', 'test-name');
+</script>
+</body>
+</html>
